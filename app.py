@@ -4,170 +4,139 @@ import plotly.express as px
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import re
-import sqlite3
-import bcrypt
-from datetime import datetime
 
 # -----------------------------
-# 페이지 설정
+# 기본 설정
 # -----------------------------
 st.set_page_config(page_title="유튜브 채널분석 대시보드", layout="wide")
 
-# -----------------------------
-# 데이터베이스 초기화
-# -----------------------------
-conn = sqlite3.connect('users.db', check_same_thread=False)
-c = conn.cursor()
-c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, created_at TEXT)')
+# CSS 커스터마이징
+st.markdown("""
+<style>
+body {
+    background-color: #f5f7fa;
+    font-family: 'Segoe UI', sans-serif;
+}
+.card {
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    text-align: center;
+    margin-bottom: 20px;
+}
+.card h4 {
+    margin-bottom: 8px;
+    color: #555;
+}
+.card h2 {
+    margin: 0;
+    color: #2b6cb0;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("✨ 유튜브 채널분석 대시보드")
 
 # -----------------------------
-# 회원가입 / 로그인 함수
+# 사이드바
 # -----------------------------
-def signup(username, password):
-    if not username or not password:
-        return False, "아이디와 비밀번호를 입력하세요."
-    c.execute('SELECT 1 FROM users WHERE username=?', (username,))
-    if c.fetchone():
-        return False, "이미 존재하는 아이디입니다."
-    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    c.execute('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)',
-              (username, hashed, datetime.now().isoformat()))
-    conn.commit()
-    return True, "회원가입 성공! 로그인해주세요."
-
-def login(username, password):
-    c.execute('SELECT password FROM users WHERE username=?', (username,))
-    result = c.fetchone()
-    if result and bcrypt.checkpw(password.encode('utf-8'), result[0]):
-        return True
-    return False
+with st.sidebar:
+    st.header("⚙️ 설정")
+    api_key = st.text_input("API 키 입력", type="password")
+    my_channel_id = st.text_input("내 채널 ID 입력")
+    max_videos = st.slider("분석할 영상 개수", 5, 50, 15)
+    st.markdown("---")
+    st.write("🏆 경쟁 채널 분석")
+    competitor_channel_url = st.text_input("경쟁 채널 URL")
+    analyze_competitor = st.button("경쟁 채널 분석 시작")
 
 # -----------------------------
-# 세션 상태 초기화
+# 유틸 함수
 # -----------------------------
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+def parse_channel_id(url: str) -> str | None:
+    if not url:
+        return None
+    m = re.search(r"channel/([A-Za-z0-9_-]+)", url)
+    return m.group(1) if m else None
 
-# -----------------------------
-# 로그인 / 회원가입 화면
-# -----------------------------
-if not st.session_state["authenticated"]:
-    st.title("로그인 / 회원가입")
-    choice = st.radio("선택하세요", ["로그인", "회원가입"])
-    username = st.text_input("아이디")
-    password = st.text_input("비밀번호", type="password")
+def get_youtube_client(api_key: str):
+    try:
+        return build("youtube", "v3", developerKey=api_key)
+    except Exception:
+        st.error("YouTube 클라이언트를 초기화하지 못했습니다.")
+        return None
 
-    if choice == "회원가입":
-        if st.button("회원가입"):
-            ok, msg = signup(username, password)
-            st.success(msg) if ok else st.error(msg)
-    else:
-        if st.button("로그인"):
-            if login(username, password):
-                st.session_state["authenticated"] = True
-                st.success("로그인 성공!")
-                st.experimental_rerun()
-            else:
-                st.error("아이디 또는 비밀번호가 잘못되었습니다.")
-# -----------------------------
-# 로그인 성공 후 대시보드
-# -----------------------------
-else:
-    st.title("✨ 유튜브 채널분석 대시보드")
-
-    # 사이드바
-    with st.sidebar:
-        st.header("⚙️ 설정")
-        api_key = st.text_input("API 키 입력", type="password")
-        my_channel_id = st.text_input("내 채널 ID 입력")
-        max_videos = st.slider("분석할 영상 개수", 5, 50, 15)
-        st.markdown("---")
-        st.write("🏆 경쟁 채널 분석")
-        competitor_channel_url = st.text_input("경쟁 채널 URL")
-        analyze_competitor = st.button("경쟁 채널 분석 시작")
-
-    # 유틸 함수
-    def parse_channel_id(url: str) -> str | None:
-        if not url:
+@st.cache_data(show_spinner=False)
+def get_channel_stats(_youtube, channel_id: str) -> dict | None:
+    try:
+        req = _youtube.channels().list(part="snippet,statistics", id=channel_id)
+        res = req.execute()
+        if not res.get("items"):
             return None
-        m = re.search(r"channel/([A-Za-z0-9_-]+)", url)
-        return m.group(1) if m else None
+        item = res["items"][0]
+        return {
+            "title": item["snippet"]["title"],
+            "subscribers": int(item["statistics"].get("subscriberCount", 0)),
+            "views": int(item["statistics"].get("viewCount", 0)),
+            "videos": int(item["statistics"].get("videoCount", 0)),
+        }
+    except HttpError:
+        return None
 
-    def get_youtube_client(api_key: str):
-        try:
-            return build("youtube", "v3", developerKey=api_key)
-        except Exception:
-            st.error("YouTube 클라이언트를 초기화하지 못했습니다.")
-            return None
-
-    @st.cache_data(show_spinner=False)
-    def get_channel_stats(_youtube, channel_id: str) -> dict | None:
-        try:
-            req = _youtube.channels().list(part="snippet,statistics", id=channel_id)
-            res = req.execute()
-            if not res.get("items"):
-                return None
-            item = res["items"][0]
-            return {
+@st.cache_data(show_spinner=False)
+def get_video_data(_youtube, channel_id: str, max_results: int = 10) -> pd.DataFrame:
+    videos = []
+    try:
+        req = _youtube.search().list(
+            part="snippet",
+            channelId=channel_id,
+            maxResults=max_results,
+            order="date",
+            type="video",
+        )
+        res = req.execute()
+        for item in res.get("items", []):
+            video_id = item["id"]["videoId"]
+            stats_req = _youtube.videos().list(part="statistics,contentDetails", id=video_id)
+            stats_res = stats_req.execute()
+            if not stats_res.get("items"):
+                continue
+            stats_item = stats_res["items"][0]
+            stats = stats_item.get("statistics", {})
+            duration = stats_item.get("contentDetails", {}).get("duration", "")
+            videos.append({
+                "videoId": video_id,
                 "title": item["snippet"]["title"],
-                "subscribers": int(item["statistics"].get("subscriberCount", 0)),
-                "views": int(item["statistics"].get("viewCount", 0)),
-                "videos": int(item["statistics"].get("videoCount", 0)),
-            }
-        except HttpError:
-            return None
+                "views": int(stats.get("viewCount", 0)),
+                "likes": int(stats.get("likeCount", 0)),
+                "comments": int(stats.get("commentCount", 0)),
+                "publishedAt": item["snippet"]["publishedAt"],
+                "duration": duration,
+            })
+    except HttpError:
+        pass
+    return pd.DataFrame(videos)
 
-    @st.cache_data(show_spinner=False)
-    def get_video_data(_youtube, channel_id: str, max_results: int = 10) -> pd.DataFrame:
-        videos = []
-        try:
-            req = _youtube.search().list(
-                part="snippet",
-                channelId=channel_id,
-                maxResults=max_results,
-                order="date",
-                type="video",
-            )
-            res = req.execute()
-            for item in res.get("items", []):
-                video_id = item["id"]["videoId"]
-                stats_req = _youtube.videos().list(part="statistics,contentDetails", id=video_id)
-                stats_res = stats_req.execute()
-                if not stats_res.get("items"):
-                    continue
-                stats_item = stats_res["items"][0]
-                stats = stats_item.get("statistics", {})
-                duration = stats_item.get("contentDetails", {}).get("duration", "")
-                videos.append({
-                    "videoId": video_id,
-                    "title": item["snippet"]["title"],
-                    "views": int(stats.get("viewCount", 0)),
-                    "likes": int(stats.get("likeCount", 0)),
-                    "comments": int(stats.get("commentCount", 0)),
-                    "publishedAt": item["snippet"]["publishedAt"],
-                    "duration": duration,
-                })
-        except HttpError:
-            pass
-        return pd.DataFrame(videos)
-    # 메인 실행
-    if not api_key or not my_channel_id:
-        st.info("왼쪽 사이드바에서 내 채널 API 키와 내 채널 ID를 입력해주세요.")
-    else:
-        youtube = get_youtube_client(api_key)
-        if youtube is None:
-            st.stop()
+# -----------------------------
+# 메인 실행
+# -----------------------------
+if not api_key or not my_channel_id:
+    st.info("사이드바에서 API 키와 내 채널 ID를 입력해주세요.")
+else:
+    youtube = get_youtube_client(api_key)
+    if youtube is None:
+        st.stop()
 
-        channel_stats = get_channel_stats(youtube, my_channel_id)
-        if channel_stats is None:
-            st.error("채널 정보를 가져오지 못했습니다.")
-            st.stop()
+    channel_stats = get_channel_stats(youtube, my_channel_id)
+    if channel_stats is None:
+        st.error("채널 정보를 가져오지 못했습니다.")
+        st.stop()
 
-        video_df = get_video_data(youtube, my_channel_id, max_results=max_videos)
-        if video_df.empty:
-            st.warning("분석할 영상 데이터가 없습니다.")
-            st.stop()
-
+    video_df = get_video_data(youtube, my_channel_id, max_results=max_videos)
+    if video_df.empty:
+        st.warning("분석할 영상 데이터가 없습니다.")
+        st.stop()
 
     # -----------------------------
     # 탭 레이아웃
