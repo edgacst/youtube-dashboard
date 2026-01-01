@@ -14,7 +14,7 @@ st.set_page_config(page_title="유튜브 채널분석 대시보드", layout="wid
 st.markdown("""
 <style>
 body {
-    background-color: #f5f7fa;
+    background-color: #ffffff;
     font-family: 'Segoe UI', sans-serif;
 }
 .card {
@@ -33,10 +33,12 @@ body {
     margin: 0;
     color: #2b6cb0;
 }
+
 /* ✅ 툴바 숨기기 */
 [data-testid="stToolbar"] {
     display: none;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -125,22 +127,41 @@ def get_video_data(_youtube, channel_id: str, max_results: int = 10) -> pd.DataF
 # -----------------------------
 # 메인 실행
 # -----------------------------
-if not api_key or not my_channel_id:
-    st.info("사이드바에서 API 키와 내 채널 ID를 입력해주세요.")
+if not api_key:
+    st.info("사이드바에서 API 키를 입력해주세요.")
 else:
     youtube = get_youtube_client(api_key)
     if youtube is None:
         st.stop()
 
-    channel_stats = get_channel_stats(youtube, my_channel_id)
-    if channel_stats is None:
-        st.error("채널 정보를 가져오지 못했습니다.")
-        st.stop()
+    # 내 채널 ID가 있으면 내 채널 분석
+    if my_channel_id:
+        channel_stats = get_channel_stats(youtube, my_channel_id)
+        if channel_stats:
+            video_df = get_video_data(youtube, my_channel_id, max_results=max_videos)
+            # 내 채널 탭 UI 실행
+        else:
+            st.warning("내 채널 정보를 가져오지 못했습니다.")
+
+    # 경쟁 채널만 조회
+    if analyze_competitor and competitor_channel_url:
+        competitor_id = parse_channel_id(competitor_channel_url)
+        if competitor_id:
+            comp_stats = get_channel_stats(youtube, competitor_id)
+            if comp_stats:
+                st.subheader("⚔️ 경쟁 채널 분석")
+                st.write(comp_stats)
+            else:
+                st.error("경쟁 채널 정보를 가져오지 못했습니다.")
+
+                st.stop()
 
     video_df = get_video_data(youtube, my_channel_id, max_results=max_videos)
     if video_df.empty:
         st.warning("분석할 영상 데이터가 없습니다.")
         st.stop()
+
+
 
     # -----------------------------
     # 탭 레이아웃
