@@ -251,7 +251,7 @@ else:
                         )
                         st.plotly_chart(fig_compare, use_container_width=True)
 
-with tab5:
+    with tab5:
     st.subheader("🎬 콘텐츠 분석")
 
     # 워드클라우드
@@ -288,6 +288,7 @@ with tab5:
         ax.set_ylabel("조회수")
         ax.set_title("썸네일 CTR vs 조회수")
         st.pyplot(fig)
+
 
 
 
