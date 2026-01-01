@@ -34,14 +34,12 @@ body {
     color: #2b6cb0;
 }
 
-/* ✅ 툴바 숨기기 */
+/* 툴바 숨기기 */
 [data-testid="stToolbar"] {
     display: none;
 }
 </style>
 """, unsafe_allow_html=True)
-
-
 
 st.title("✨ 유튜브 채널분석 대시보드")
 
@@ -250,6 +248,7 @@ else:
                             color_discrete_sequence=["#2b6cb0", "#ff7f0e"]  # 내 채널 파랑, 경쟁 채널 주황
                         )
                         st.plotly_chart(fig_compare, use_container_width=True)
+
 
 
 
