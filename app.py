@@ -258,6 +258,7 @@ with tab5:
     st.subheader("🎬 콘텐츠 분석")
     st.write("video_df preview:")
     st.dataframe(video_df)
+    st.write(video_df.shape)
 
     # 워드클라우드
     text_data = " ".join(video_df['title'].astype(str))
@@ -293,6 +294,7 @@ with tab5:
         ax.set_ylabel("조회수")
         ax.set_title("썸네일 CTR vs 조회수")
         st.pyplot(fig)
+
 
 
 
