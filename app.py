@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 import isodate
 
-
 # -----------------------------
 # 기본 설정
 # -----------------------------
@@ -121,7 +120,7 @@ def get_video_data(_youtube, channel_id: str, max_results: int = 10) -> pd.DataF
                 "likes": int(stats.get("likeCount", 0)),
                 "comments": int(stats.get("commentCount", 0)),
                 "publishedAt": item["snippet"]["publishedAt"],
-                "duration": duration,
+                "duration": duration,  # ISO 8601 (예: PT5M30S)
             })
     except HttpError:
         pass
@@ -137,16 +136,11 @@ else:
     if youtube is None:
         st.stop()
 
-    # 내 채널 ID가 있으면 내 채널 분석
+    # 내 채널/경쟁 채널 처리
+    channel_stats = None
     if my_channel_id:
         channel_stats = get_channel_stats(youtube, my_channel_id)
-        if channel_stats:
-            video_df = get_video_data(youtube, my_channel_id, max_results=max_videos)
-            # 내 채널 탭 UI 실행
-        else:
-            st.warning("내 채널 정보를 가져오지 못했습니다.")
 
-    # 경쟁 채널만 조회
     if analyze_competitor and competitor_channel_url:
         competitor_id = parse_channel_id(competitor_channel_url)
         if competitor_id:
@@ -156,47 +150,55 @@ else:
                 st.write(comp_stats)
             else:
                 st.error("경쟁 채널 정보를 가져오지 못했습니다.")
-
                 st.stop()
 
+    # 내 채널 영상 데이터
     video_df = get_video_data(youtube, my_channel_id, max_results=max_videos)
     if video_df.empty:
         st.warning("분석할 영상 데이터가 없습니다.")
         st.stop()
 
-
+    # ✅ duration 문자열을 초 단위로 변환해 그래프에서 사용
+    video_df["duration_sec"] = video_df["duration"].apply(
+        lambda x: int(isodate.parse_duration(x).total_seconds()) if x else None
+    )
 
     # -----------------------------
     # 탭 레이아웃
     # -----------------------------
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📈 성과 분석",
-    "🧠 추천/알림",
-    "📑 리포트/시청자",
-    "⚔️ 경쟁 채널",
-    "🎬 콘텐츠 분석"   # ✅ 새 탭 추가
-])
-
+        "📈 성과 분석",
+        "🧠 추천/알림",
+        "📑 리포트/시청자",
+        "⚔️ 경쟁 채널",
+        "🎬 콘텐츠 분석"
+    ])
 
     with tab1:
         st.subheader("📈 성과 분석 (카드형 UI)")
         col1, col2, col3 = st.columns(3)
+
+        # ✅ channel_stats가 None일 수 있으니 안전하게 처리
+        subs = channel_stats["subscribers"] if channel_stats else 0
+        views_total = channel_stats["views"] if channel_stats else int(video_df["views"].sum())
+        videos_cnt = channel_stats["videos"] if channel_stats else len(video_df)
+
         with col1:
-            st.markdown(f"<div class='card'><h4>구독자 수</h4><h2>{channel_stats['subscribers']:,}</h2></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card'><h4>구독자 수</h4><h2>{subs:,}</h2></div>", unsafe_allow_html=True)
         with col2:
-            st.markdown(f"<div class='card'><h4>총 조회수</h4><h2>{channel_stats['views']:,}</h2></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card'><h4>총 조회수</h4><h2>{views_total:,}</h2></div>", unsafe_allow_html=True)
         with col3:
-            st.markdown(f"<div class='card'><h4>영상 개수</h4><h2>{channel_stats['videos']:,}</h2></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card'><h4>영상 개수</h4><h2>{videos_cnt:,}</h2></div>", unsafe_allow_html=True)
 
         st.markdown("#### 🎥 영상별 성과")
         st.dataframe(video_df[["title", "views", "likes", "comments", "publishedAt"]], use_container_width=True)
 
         st.markdown("#### 📊 조회수/좋아요/댓글 시각화")
         fig = px.bar(
-            video_df, 
-            x="title", 
-            y=["views","likes","comments"], 
-            barmode="group", 
+            video_df,
+            x="title",
+            y=["views", "likes", "comments"],
+            barmode="group",
             title="영상별 성과 비교",
             color_discrete_sequence=px.colors.qualitative.Set2
         )
@@ -205,15 +207,15 @@ else:
     with tab2:
         st.subheader("🧠 AI 추천 & 🔔 알림")
         avg_views = video_df["views"].mean()
-        alert_videos = video_df[(video_df["views"] > avg_views*1.3) | (video_df["views"] < avg_views*0.7)]
+        alert_videos = video_df[(video_df["views"] > avg_views * 1.3) | (video_df["views"] < avg_views * 0.7)]
         if not alert_videos.empty:
             st.warning("성과 변동이 큰 영상 발견!")
-            st.dataframe(alert_videos[["title","views","likes","comments"]])
+            st.dataframe(alert_videos[["title", "views", "likes", "comments"]])
 
     with tab3:
         st.subheader("📑 리포트 & 👥 시청자 분석")
         video_df["engagement"] = (video_df["likes"] + video_df["comments"]) / video_df["views"]
-        st.dataframe(video_df[["title","views","likes","comments","engagement"]])
+        st.dataframe(video_df[["title", "views", "likes", "comments", "engagement"]])
 
     with tab4:
         st.subheader("⚔️ 경쟁 채널 비교")
@@ -228,18 +230,18 @@ else:
                 else:
                     c1, c2 = st.columns(2)
                     with c1:
-                        st.markdown(f"<div class='card'><h4>내 채널 구독자</h4><h2>{channel_stats['subscribers']:,}</h2></div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='card'><h4>내 채널 조회수</h4><h2>{channel_stats['views']:,}</h2></div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='card'><h4>내 채널 영상 개수</h4><h2>{channel_stats['videos']:,}</h2></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='card'><h4>내 채널 구독자</h4><h2>{subs:,}</h2></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='card'><h4>내 채널 조회수</h4><h2>{views_total:,}</h2></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='card'><h4>내 채널 영상 개수</h4><h2>{videos_cnt:,}</h2></div>", unsafe_allow_html=True)
                     with c2:
                         st.markdown(f"<div class='card'><h4>경쟁 채널 구독자</h4><h2>{comp_stats['subscribers']:,}</h2></div>", unsafe_allow_html=True)
                         st.markdown(f"<div class='card'><h4>경쟁 채널 조회수</h4><h2>{comp_stats['views']:,}</h2></div>", unsafe_allow_html=True)
                         st.markdown(f"<div class='card'><h4>경쟁 채널 영상 개수</h4><h2>{comp_stats['videos']:,}</h2></div>", unsafe_allow_html=True)
 
                     st.subheader("📊 채널 차이")
-                    st.markdown(f"<div class='card'><h4>구독자 차이</h4><h2>{channel_stats['subscribers'] - comp_stats['subscribers']:,}</h2></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='card'><h4>조회수 차이</h4><h2>{channel_stats['views'] - comp_stats['views']:,}</h2></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='card'><h4>영상 개수 차이</h4><h2>{channel_stats['videos'] - comp_stats['videos']:,}</h2></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='card'><h4>구독자 차이</h4><h2>{subs - comp_stats['subscribers']:,}</h2></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='card'><h4>조회수 차이</h4><h2>{views_total - comp_stats['views']:,}</h2></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='card'><h4>영상 개수 차이</h4><h2>{videos_cnt - comp_stats['videos']:,}</h2></div>", unsafe_allow_html=True)
 
                     comp_videos = get_video_data(youtube, competitor_id, max_results=max_videos)
                     if not comp_videos.empty:
@@ -251,56 +253,49 @@ else:
                         fig_compare = px.bar(
                             comp_view_df, x="title", y="views", color="채널",
                             title="영상별 조회수 비교", barmode="group", height=500,
-                            color_discrete_sequence=["#2b6cb0", "#ff7f0e"]  # 내 채널 파랑, 경쟁 채널 주황
+                            color_discrete_sequence=["#2b6cb0", "#ff7f0e"]
                         )
                         st.plotly_chart(fig_compare, use_container_width=True)
 
-    
-with tab5:
-    st.subheader("🎬 콘텐츠 분석")
-    st.write("video_df preview:")
-    st.dataframe(video_df)
-   
+    with tab5:
+        st.subheader("🎬 콘텐츠 분석")
+        st.write("video_df preview:")
+        st.dataframe(video_df)
 
-    # 워드클라우드
-    text_data = " ".join(video_df['title'].astype(str))
-    wordcloud = WordCloud(width=800, height=400, background_color="white").generate(text_data)
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(wordcloud, interpolation="bilinear")
-    ax.axis("off")
-    st.pyplot(fig)
-
-    # 영상 길이 vs 조회수
-    if "duration" in video_df.columns:
-        fig, ax = plt.subplots(figsize=(8, 5))
-        ax.scatter(video_df["duration"], video_df["views"], alpha=0.6)
-        ax.set_xlabel("영상 길이 (초)")
-        ax.set_ylabel("조회수")
-        ax.set_title("영상 길이 vs 조회수")
+        # 워드클라우드
+        text_data = " ".join(video_df['title'].astype(str))
+        wordcloud = WordCloud(width=800, height=400, background_color="white").generate(text_data)
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.imshow(wordcloud, interpolation="bilinear")
+        ax.axis("off")
         st.pyplot(fig)
 
-    # 제목 길이 vs 조회수
-    video_df["title_length"] = video_df["title"].str.len()
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.scatter(video_df["title_length"], video_df["views"], alpha=0.6, color="orange")
-    ax.set_xlabel("제목 길이 (글자 수)")
-    ax.set_ylabel("조회수")
-    ax.set_title("제목 길이 vs 조회수")
-    st.pyplot(fig)
+        # 영상 길이 vs 조회수 (duration_sec 사용)
+        if "duration_sec" in video_df.columns and video_df["duration_sec"].notna().any():
+            fig, ax = plt.subplots(figsize=(8, 5))
+            ax.scatter(video_df["duration_sec"], video_df["views"], alpha=0.6)
+            ax.set_xlabel("영상 길이 (초)")
+            ax.set_ylabel("조회수")
+            ax.set_title("영상 길이 vs 조회수")
+            st.pyplot(fig)
 
-    # 썸네일 CTR vs 조회수
-    if "click_through_rate" in video_df.columns:
+        # 제목 길이 vs 조회수
+        video_df["title_length"] = video_df["title"].str.len()
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.scatter(video_df["click_through_rate"], video_df["views"], alpha=0.6, color="green")
-        ax.set_xlabel("썸네일 CTR (%)")
+        ax.scatter(video_df["title_length"], video_df["views"], alpha=0.6, color="orange")
+        ax.set_xlabel("제목 길이 (글자 수)")
         ax.set_ylabel("조회수")
-        ax.set_title("썸네일 CTR vs 조회수")
+        ax.set_title("제목 길이 vs 조회수")
         st.pyplot(fig)
 
-
-
-
-
+        # 썸네일 CTR vs 조회수 (데이터 있을 경우)
+        if "click_through_rate" in video_df.columns:
+            fig, ax = plt.subplots(figsize=(8, 5))
+            ax.scatter(video_df["click_through_rate"], video_df["views"], alpha=0.6, color="green")
+            ax.set_xlabel("썸네일 CTR (%)")
+            ax.set_ylabel("조회수")
+            ax.set_title("썸네일 CTR vs 조회수")
+            st.pyplot(fig)
 
 
 
