@@ -165,12 +165,14 @@ else:
     # -----------------------------
     # 탭 레이아웃
     # -----------------------------
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📈 성과 분석", 
-        "🧠 추천/알림", 
-        "📑 리포트/시청자", 
-        "⚔️ 경쟁 채널"
-    ])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📈 성과 분석",
+    "🧠 추천/알림",
+    "📑 리포트/시청자",
+    "⚔️ 경쟁 채널",
+    "🎬 콘텐츠 분석"   # ✅ 새 탭 추가
+])
+
 
     with tab1:
         st.subheader("📈 성과 분석 (카드형 UI)")
@@ -248,6 +250,44 @@ else:
                             color_discrete_sequence=["#2b6cb0", "#ff7f0e"]  # 내 채널 파랑, 경쟁 채널 주황
                         )
                         st.plotly_chart(fig_compare, use_container_width=True)
+
+with tab5:
+    st.subheader("🎬 콘텐츠 분석")
+
+    # 워드클라우드
+    text_data = " ".join(video_df['title'].astype(str))
+    wordcloud = WordCloud(width=800, height=400, background_color="white").generate(text_data)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(wordcloud, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig)
+
+    # 영상 길이 vs 조회수
+    if "duration" in video_df.columns:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.scatter(video_df["duration"], video_df["views"], alpha=0.6)
+        ax.set_xlabel("영상 길이 (초)")
+        ax.set_ylabel("조회수")
+        ax.set_title("영상 길이 vs 조회수")
+        st.pyplot(fig)
+
+    # 제목 길이 vs 조회수
+    video_df["title_length"] = video_df["title"].str.len()
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.scatter(video_df["title_length"], video_df["views"], alpha=0.6, color="orange")
+    ax.set_xlabel("제목 길이 (글자 수)")
+    ax.set_ylabel("조회수")
+    ax.set_title("제목 길이 vs 조회수")
+    st.pyplot(fig)
+
+    # 썸네일 CTR vs 조회수 (데이터 있을 경우)
+    if "click_through_rate" in video_df.columns:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.scatter(video_df["click_through_rate"], video_df["views"], alpha=0.6, color="green")
+        ax.set_xlabel("썸네일 CTR (%)")
+        ax.set_ylabel("조회수")
+        ax.set_title("썸네일 CTR vs 조회수")
+        st.pyplot(fig)
 
 
 
