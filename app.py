@@ -4,6 +4,70 @@ import plotly.express as px
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import re
+import sqlite3
+import bcrypt
+from datetime import datetime
+
+# -----------------------------
+# 데이터베이스 초기화
+# -----------------------------
+conn = sqlite3.connect('users.db', check_same_thread=False)
+c = conn.cursor()
+c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, created_at TEXT)')
+
+# -----------------------------
+# 회원가입 함수
+# -----------------------------
+def signup(username, password):
+    if not username or not password:
+        return False, "아이디와 비밀번호를 입력하세요."
+    c.execute('SELECT 1 FROM users WHERE username=?', (username,))
+    if c.fetchone():
+        return False, "이미 존재하는 아이디입니다."
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    c.execute('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)',
+              (username, hashed, datetime.now().isoformat()))
+    conn.commit()
+    return True, "회원가입 성공! 로그인해주세요."
+
+# -----------------------------
+# 로그인 함수
+# -----------------------------
+def login(username, password):
+    c.execute('SELECT password FROM users WHERE username=?', (username,))
+    result = c.fetchone()
+    if result and bcrypt.checkpw(password.encode('utf-8'), result[0]):
+        return True
+    return False
+
+# -----------------------------
+# 세션 상태 초기화
+# -----------------------------
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+# -----------------------------
+# 로그인 / 회원가입 화면
+# -----------------------------
+if not st.session_state["authenticated"]:
+    st.title("로그인 / 회원가입")
+
+    choice = st.radio("선택하세요", ["로그인", "회원가입"])
+    username = st.text_input("아이디")
+    password = st.text_input("비밀번호", type="password")
+
+    if choice == "회원가입":
+        if st.button("회원가입"):
+            ok, msg = signup(username, password)
+            st.success(msg) if ok else st.error(msg)
+    else:
+        if st.button("로그인"):
+            if login(username, password):
+                st.session_state["authenticated"] = True
+                st.success("로그인 성공!")
+                st.experimental_rerun()
+            else:
+                st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
 # -----------------------------
 # 기본 설정
