@@ -253,10 +253,11 @@ else:
                         )
                         st.plotly_chart(fig_compare, use_container_width=True)
 
-    with tab5:
+    
+with tab5:
     st.subheader("🎬 콘텐츠 분석")
-     st.write("video_df preview:")
-     st.dataframe(video_df)
+    st.write("video_df preview:")
+    st.dataframe(video_df)
 
     # 워드클라우드
     text_data = " ".join(video_df['title'].astype(str))
@@ -284,7 +285,7 @@ else:
     ax.set_title("제목 길이 vs 조회수")
     st.pyplot(fig)
 
-    # 썸네일 CTR vs 조회수 (데이터 있을 경우)
+    # 썸네일 CTR vs 조회수
     if "click_through_rate" in video_df.columns:
         fig, ax = plt.subplots(figsize=(8, 5))
         ax.scatter(video_df["click_through_rate"], video_df["views"], alpha=0.6, color="green")
@@ -292,8 +293,6 @@ else:
         ax.set_ylabel("조회수")
         ax.set_title("썸네일 CTR vs 조회수")
         st.pyplot(fig)
-
-
 
 
 
