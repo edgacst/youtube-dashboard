@@ -4,8 +4,10 @@ import plotly.express as px
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import re
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 from wordcloud import WordCloud
+import isodate
+
 
 # -----------------------------
 # 기본 설정
@@ -294,6 +296,7 @@ with tab5:
         ax.set_ylabel("조회수")
         ax.set_title("썸네일 CTR vs 조회수")
         st.pyplot(fig)
+
 
 
 
